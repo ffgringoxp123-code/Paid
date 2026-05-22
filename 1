@@ -1,0 +1,756 @@
+repeat task.wait() until game:IsLoaded()
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local VIM = game:GetService("VirtualInputManager")
+local UIS = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local SoundService = game:GetService("SoundService")
+local StarterGui = game:GetService("StarterGui")
+local Lighting = game:GetService("Lighting")
+
+local function DoParry()
+    VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+    VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+end
+
+local AutoParry = false
+local ManualSpam = false
+local SpamActive = false
+local CurrentMode = "None"
+local peakVel = 0
+local lastHitTick = 0
+local SPAM_INTERVAL = 1 / 250
+local lastSpamTick = 0
+local trailEnabled = false
+local espEnabled = false
+local hitSoundEnabled = false
+local musicEnabled = false
+local autoJumpEnabled = false
+local immortalEnabled = false
+local orbitEnabled = false
+local selectedTrailColor = "Rainbow"
+local orbitAngle = 0
+local hasJumped = false
+
+-- HIT SOUNDS
+local hitSounds = {
+    ["UwU"] = "rbxassetid://4612696038",
+    ["Medal"] = "rbxassetid://3251785210",
+    ["Piu"] = "rbxassetid://5152762925",
+    ["Keyboard"] = "rbxassetid://3781186340",
+    ["Pop"] = "rbxassetid://4919655462",
+    ["Ding"] = "rbxassetid://4590657391",
+}
+local currentHitSound = "UwU"
+
+-- MUSIC
+local musicList = {
+    ["Believer"] = "rbxassetid://938085077",
+    ["Stay"] = "rbxassetid://1215385018",
+    ["Levitating"] = "rbxassetid://6998388895",
+    ["Sunflower"] = "rbxassetid://4962735807",
+    ["Blinding Lights"] = "rbxassetid://5898558677",
+}
+local musicSound = Instance.new("Sound", SoundService)
+musicSound.SoundId = musicList["Believer"]
+musicSound.Volume = 0.3
+musicSound.Looped = true
+
+-- WINDUI LOAD
+local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+
+-- TẠO THEME HỒNG
+local PinkTheme = WindUI.AddTheme({
+    Name = "KittyPink",
+    Accent = Color3.fromRGB(255, 105, 180),           -- Hồng
+    AccentSecondary = Color3.fromRGB(230, 80, 150),
+    Background = Color3.fromRGB(25, 10, 20),
+    BackgroundSecondary = Color3.fromRGB(40, 15, 30),
+    BackgroundTertiary = Color3.fromRGB(55, 25, 45),
+    Text = Color3.fromRGB(255, 255, 255),
+    TextSecondary = Color3.fromRGB(220, 180, 200),
+    TextTertiary = Color3.fromRGB(180, 140, 160),
+    Border = Color3.fromRGB(80, 30, 60),
+    Shadow = Color3.fromRGB(0, 0, 0),
+    Danger = Color3.fromRGB(255, 80, 80),
+    Success = Color3.fromRGB(80, 255, 150),
+    Warning = Color3.fromRGB(255, 200, 80),
+})
+WindUI.SetTheme("KittyPink")
+
+-- WINDOW
+local Window = WindUI:Window({
+    Title = "kittylol",
+    Icon = "cat",
+    Transparent = false,
+    Size = UDim2.fromOffset(648, 429),
+    Resizable = true,
+    MinSize = Vector2.new(500, 350),
+})
+
+Window:SetToggleKey(Enum.KeyCode.K)
+
+-- TABS
+local Tab = Window:Tab({ Title = "Main", Icon = "home-2", Border = true })
+local Tab2 = Window:Tab({ Title = "Curve Mode", Icon = "settings", Border = true })
+local Tab3 = Window:Tab({ Title = "Stats", Icon = "activity", Border = true })
+local Tab4 = Window:Tab({ Title = "Misc", Icon = "star", Border = true })
+local Tab5 = Window:Tab({ Title = "Player", Icon = "user", Border = true })
+local Tab6 = Window:Tab({ Title = "Fps+Ping Boost", Icon = "zap", Border = true })
+
+-- MAIN TAB
+local LeftSection = Tab:Section({ Side = "left" })
+local RightSection = Tab:Section({ Side = "right" })
+
+LeftSection:Module({
+    Title = "Auto Parry",
+    Desc = "Automatically parry the ball.",
+    Flag = "auto_parry",
+    Locked = false,
+    Callback = function(state)
+        AutoParry = state
+    end
+})
+
+local SpamModule = RightSection:Module({
+    Title = "Manual Spam UI",
+    Desc = "Opens spam panel on screen.",
+    Flag = "manual_spam",
+    Locked = false,
+    Callback = function(state)
+        ManualSpam = state
+        if not state then SpamActive = false end
+    end
+})
+
+-- CURVE MODE TAB
+local CurveSection = Tab2:Section({ Side = "left" })
+
+CurveSection:Dropdown({
+    Title = "Curve Mode",
+    Values = {"None", "Random", "Camera", "Up", "Side", "Backward"},
+    Value = "None",
+    Flag = "curve_mode",
+    Locked = false,
+    Callback = function(option)
+        CurrentMode = option
+    end
+})
+
+-- UI ELEMENTS
+local function MakeDraggable(frame)
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = input.Position; startPos = frame.Position
+            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+local ScreenGui = Instance.new("ScreenGui", PlayerGui); ScreenGui.ResetOnSpawn = false
+
+-- BALL STATS UI
+local PFrame = Instance.new("Frame", ScreenGui)
+PFrame.Size = UDim2.new(0, 180, 0, 115); PFrame.Position = UDim2.new(0.05, 0, 0.4, 0)
+PFrame.BackgroundColor3 = Color3.fromRGB(20, 10, 18); PFrame.BackgroundTransparency = 0; PFrame.Visible = false
+Instance.new("UICorner", PFrame).CornerRadius = UDim.new(0, 15)
+local PStrokeBall = Instance.new("UIStroke", PFrame); PStrokeBall.Color = Color3.fromRGB(180, 80, 140); PStrokeBall.Thickness = 2
+local PTitle = Instance.new("TextLabel", PFrame); PTitle.Size = UDim2.new(1, 0, 0, 30); PTitle.Text = "BALL STATS"; PTitle.TextColor3 = Color3.fromRGB(220, 180, 200); PTitle.BackgroundTransparency = 1; PTitle.Font = Enum.Font.GothamBold; PTitle.TextSize = 14
+local VLabel = Instance.new("TextLabel", PFrame); VLabel.Position = UDim2.new(0.1, 0, 0.32, 0); VLabel.Size = UDim2.new(0.8, 0, 0, 12); VLabel.Text = "Velocity"; VLabel.TextColor3 = Color3.fromRGB(180, 140, 160); VLabel.BackgroundTransparency = 1; VLabel.Font = Enum.Font.Gotham; VLabel.TextSize = 12; VLabel.TextXAlignment = Enum.TextXAlignment.Left
+local VLog = Instance.new("TextLabel", PFrame); VLog.Position = UDim2.new(0.1, 0, 0.45, 0); VLog.Size = UDim2.new(0.8, 0, 0, 25); VLog.Text = "0.0"; VLog.TextColor3 = Color3.fromRGB(255, 140, 0); VLog.BackgroundTransparency = 1; VLog.Font = Enum.Font.GothamBold; VLog.TextSize = 22; VLog.TextXAlignment = Enum.TextXAlignment.Left
+local PLabel2 = Instance.new("TextLabel", PFrame); PLabel2.Position = UDim2.new(0.1, 0, 0.72, 0); PLabel2.Size = UDim2.new(0.8, 0, 0, 12); PLabel2.Text = "Peak"; PLabel2.TextColor3 = Color3.fromRGB(180, 140, 160); PLabel2.BackgroundTransparency = 1; PLabel2.Font = Enum.Font.Gotham; PLabel2.TextSize = 11; PLabel2.TextXAlignment = Enum.TextXAlignment.Left
+local PLog = Instance.new("TextLabel", PFrame); PLog.Position = UDim2.new(0.1, 0, 0.82, 0); PLog.Size = UDim2.new(0.8, 0, 0, 18); PLog.Text = "0.0"; PLog.TextColor3 = Color3.fromRGB(255, 105, 180); PLog.BackgroundTransparency = 1; PLog.Font = Enum.Font.GothamBold; PLog.TextSize = 16; PLog.TextXAlignment = Enum.TextXAlignment.Left
+MakeDraggable(PFrame, PTitle)
+
+-- SPAM UI
+local SpamFrame = Instance.new("Frame", ScreenGui)
+SpamFrame.Size = UDim2.new(0, 150, 0, 80); SpamFrame.Position = UDim2.new(0.4, 0, 0.5, 0)
+SpamFrame.BackgroundColor3 = Color3.fromRGB(20, 10, 18); SpamFrame.BackgroundTransparency = 0; SpamFrame.Visible = false
+Instance.new("UICorner", SpamFrame).CornerRadius = UDim.new(0, 12)
+local SpamStroke = Instance.new("UIStroke", SpamFrame); SpamStroke.Color = Color3.fromRGB(180, 80, 140); SpamStroke.Thickness = 2
+local SpamTitleLbl = Instance.new("TextLabel", SpamFrame); SpamTitleLbl.Size = UDim2.new(1, 0, 0, 25); SpamTitleLbl.Text = "Manual Spam"; SpamTitleLbl.TextColor3 = Color3.fromRGB(220, 180, 200); SpamTitleLbl.BackgroundTransparency = 1; SpamTitleLbl.Font = Enum.Font.GothamBold; SpamTitleLbl.TextSize = 12
+local SpamToggleBtn = Instance.new("TextButton", SpamFrame)
+SpamToggleBtn.Size = UDim2.new(0.85, 0, 0, 35); SpamToggleBtn.Position = UDim2.new(0.075, 0, 0, 35)
+SpamToggleBtn.Text = "SPAM: OFF"; SpamToggleBtn.BackgroundColor3 = Color3.fromRGB(60, 15, 40)
+SpamToggleBtn.TextColor3 = Color3.new(1, 1, 1); SpamToggleBtn.Font = Enum.Font.GothamBold; SpamToggleBtn.TextSize = 13
+Instance.new("UICorner", SpamToggleBtn).CornerRadius = UDim.new(0, 8)
+MakeDraggable(SpamFrame, SpamTitleLbl)
+
+SpamToggleBtn.MouseButton1Click:Connect(function()
+    SpamActive = not SpamActive
+    SpamToggleBtn.Text = SpamActive and "SPAM: ON" or "SPAM: OFF"
+    SpamToggleBtn.BackgroundColor3 = SpamActive and Color3.fromRGB(255, 105, 180) or Color3.fromRGB(60, 15, 40)
+end)
+
+RunService.Heartbeat:Connect(function()
+    if SpamFrame.Visible ~= ManualSpam then
+        SpamFrame.Visible = ManualSpam
+        if not ManualSpam then
+            SpamActive = false
+            SpamToggleBtn.Text = "SPAM: OFF"
+            SpamToggleBtn.BackgroundColor3 = Color3.fromRGB(60, 15, 40)
+        end
+    end
+end)
+
+-- STATS TAB
+local StatsSection = Tab3:Section({ Side = "left" })
+
+StatsSection:Module({
+    Title = "Show Peak",
+    Desc = "Show ball velocity and peak speed.",
+    Flag = "show_peak",
+    Locked = false,
+    Callback = function(state)
+        PFrame.Visible = state
+    end
+})
+
+-- MISC TAB
+local MiscLeft = Tab4:Section({ Side = "left" })
+local MiscRight = Tab4:Section({ Side = "right" })
+
+local trailModule = MiscLeft:Module({
+    Title = "Ball Trail",
+    Desc = "Trail effect on the ball.",
+    Flag = "ball_trail",
+    Locked = false,
+    Callback = function(state)
+        trailEnabled = state
+    end
+})
+trailModule:Dropdown({
+    Title = "Trail Color",
+    Values = {"Rainbow", "Blue", "Yellow", "Green", "Pink", "Cyan"},
+    Value = "Rainbow",
+    Flag = "trail_color",
+    Locked = false,
+    Callback = function(option)
+        selectedTrailColor = option
+    end
+})
+
+MiscLeft:Module({
+    Title = "Player ESP",
+    Desc = "Show player names above heads.",
+    Flag = "esp_enabled",
+    Locked = false,
+    Callback = function(state)
+        espEnabled = state
+        if not state then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character then
+                    local head = p.Character:FindFirstChild("Head")
+                    if head then
+                        local bb = head:FindFirstChild("KittyESP")
+                        if bb then bb:Destroy() end
+                    end
+                end
+            end
+        end
+    end
+})
+
+-- HIT SOUND
+local hitModule = MiscRight:Module({
+    Title = "Hit Sound",
+    Desc = "Sound when you parry the ball.",
+    Flag = "hit_sound",
+    Locked = false,
+    Callback = function(state)
+        hitSoundEnabled = state
+    end
+})
+hitModule:Dropdown({
+    Title = "Sound",
+    Values = {"UwU", "Medal", "Piu", "Keyboard", "Pop", "Ding"},
+    Value = "UwU",
+    Flag = "sound_type",
+    Locked = false,
+    Callback = function(option)
+        currentHitSound = option
+    end
+})
+hitModule:Slider({
+    Title = "Hit Volume",
+    Min = 0,
+    Max = 100,
+    Value = 80,
+    Callback = function(value) end
+})
+
+-- MUSIC
+local musicModule = MiscRight:Module({
+    Title = "Music",
+    Desc = "Background music.",
+    Flag = "music_enabled",
+    Locked = false,
+    Callback = function(state)
+        musicEnabled = state
+        if state then
+            musicSound:Play()
+        else
+            musicSound:Stop()
+        end
+    end
+})
+musicModule:Dropdown({
+    Title = "Song",
+    Values = {"Believer", "Stay", "Levitating", "Sunflower", "Blinding Lights"},
+    Value = "Believer",
+    Flag = "music_song",
+    Locked = false,
+    Callback = function(option)
+        musicSound.SoundId = musicList[option] or musicList["Believer"]
+        if musicEnabled then musicSound:Stop(); musicSound:Play() end
+    end
+})
+musicModule:Slider({
+    Title = "Music Volume",
+    Min = 0,
+    Max = 100,
+    Value = 30,
+    Callback = function(value)
+        musicSound.Volume = value / 100
+    end
+})
+
+-- PLAYER TAB
+local PlayerLeft = Tab5:Section({ Side = "left" })
+local PlayerRight = Tab5:Section({ Side = "right" })
+
+PlayerLeft:Module({
+    Title = "Immortal",
+    Desc = "Character becomes immortal.",
+    Flag = "immortal",
+    Locked = false,
+    Callback = function(state)
+        immortalEnabled = state
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                if state then
+                    hum.MaxHealth = math.huge
+                    hum.Health = math.huge
+                else
+                    hum.MaxHealth = 100
+                    hum.Health = 100
+                end
+            end
+        end
+        LocalPlayer.CharacterAdded:Connect(function(char)
+            if immortalEnabled then
+                local hum = char:WaitForChild("Humanoid")
+                hum.MaxHealth = math.huge
+                hum.Health = math.huge
+                hum:GetPropertyChangedSignal("Health"):Connect(function()
+                    if immortalEnabled and hum.Health < hum.MaxHealth then
+                        hum.Health = hum.MaxHealth
+                    end
+                end)
+            end
+        end)
+    end
+})
+
+PlayerLeft:Module({
+    Title = "Auto Jump",
+    Desc = "Jump once then stop.",
+    Flag = "auto_jump",
+    Locked = false,
+    Callback = function(state)
+        autoJumpEnabled = state
+        hasJumped = false
+    end
+})
+
+PlayerLeft:Module({
+    Title = "Orbit (Around Self)",
+    Desc = "Parts orbit around you.",
+    Flag = "orbit",
+    Locked = false,
+    Callback = function(state)
+        orbitEnabled = state
+        if not state then
+            for _, v in pairs(ScreenGui:GetChildren()) do
+                if v.Name == "OrbitPart" then v:Destroy() end
+            end
+        end
+    end
+})
+
+PlayerRight:Slider({
+    Title = "FOV",
+    Min = 70,
+    Max = 200,
+    Value = 70,
+    Callback = function(value)
+        workspace.CurrentCamera.FieldOfView = value
+    end
+})
+
+-- FPS+PING BOOST TAB
+local FpsLeft = Tab6:Section({ Side = "left" })
+local FpsRight = Tab6:Section({ Side = "right" })
+
+FpsLeft:Module({
+    Title = "Anti Lag (Strong)",
+    Desc = "Maximum FPS boost.",
+    Flag = "anti_lag",
+    Locked = false,
+    Callback = function(state)
+        if state then
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = math.huge
+            Lighting.FogStart = math.huge
+            for _, v in pairs(workspace:GetDescendants()) do
+                pcall(function()
+                    if v:IsA("ParticleEmitter") or v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                        v.Enabled = false
+                    end
+                    if v:IsA("Texture") or v:IsA("Decal") then
+                        v.Transparency = 1
+                    end
+                end)
+            end
+        else
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+            Lighting.GlobalShadows = true
+            Lighting.FogEnd = 100000
+            Lighting.FogStart = 0
+            for _, v in pairs(workspace:GetDescendants()) do
+                pcall(function()
+                    if v:IsA("ParticleEmitter") or v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                        v.Enabled = true
+                    end
+                    if v:IsA("Texture") or v:IsA("Decal") then
+                        v.Transparency = 0
+                    end
+                end)
+            end
+        end
+    end
+})
+
+FpsLeft:Module({
+    Title = "Disable Shadows",
+    Desc = "Turns off all shadows.",
+    Flag = "no_shadows",
+    Locked = false,
+    Callback = function(state)
+        Lighting.GlobalShadows = not state
+    end
+})
+
+FpsLeft:Module({
+    Title = "Disable Fog",
+    Desc = "Removes fog.",
+    Flag = "no_fog",
+    Locked = false,
+    Callback = function(state)
+        Lighting.FogEnd = state and math.huge or 100000
+        Lighting.FogStart = state and math.huge or 0
+    end
+})
+
+FpsLeft:Module({
+    Title = "No Particles",
+    Desc = "Removes all particle effects.",
+    Flag = "no_particles",
+    Locked = false,
+    Callback = function(state)
+        for _, v in pairs(workspace:GetDescendants()) do
+            pcall(function()
+                if v:IsA("ParticleEmitter") or v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                    v.Enabled = not state
+                end
+            end)
+        end
+    end
+})
+
+FpsRight:Slider({
+    Title = "Graphics Level",
+    Min = 1,
+    Max = 10,
+    Value = 10,
+    Callback = function(value)
+        settings().Rendering.QualityLevel = value
+    end
+})
+
+FpsRight:Module({
+    Title = "Hide Roblox UI",
+    Desc = "Hides Roblox UI for FPS boost.",
+    Flag = "hide_ui",
+    Locked = false,
+    Callback = function(state)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, not state)
+    end
+})
+
+FpsRight:Module({
+    Title = "Disable Animations",
+    Desc = "Removes player animations.",
+    Flag = "no_anim",
+    Locked = false,
+    Callback = function(state)
+        local char = LocalPlayer.Character
+        if char then
+            local animate = char:FindFirstChild("Animate")
+            if animate then animate.Disabled = state end
+        end
+    end
+})
+
+Window:Load()
+
+WindUI:Notify({
+    Title = "kittylol",
+    Description = "meow~ Block the ball coming at you first!",
+    Duration = 5
+})
+
+-- RAINBOW COLORS
+local rainbowColors = {
+    Color3.fromRGB(255, 0, 0), Color3.fromRGB(255, 165, 0),
+    Color3.fromRGB(255, 255, 0), Color3.fromRGB(0, 255, 0),
+    Color3.fromRGB(0, 0, 255), Color3.fromRGB(255, 0, 255),
+    Color3.fromRGB(0, 255, 255), Color3.fromRGB(255, 105, 180),
+}
+local colorOptions = {
+    Blue = Color3.fromRGB(0, 120, 255), Yellow = Color3.fromRGB(255, 220, 0),
+    Green = Color3.fromRGB(0, 255, 100), Pink = Color3.fromRGB(255, 105, 180),
+    Cyan = Color3.fromRGB(0, 255, 255),
+}
+local colorIndex = 1
+
+local function addTrail(ball, color)
+    if not ball:FindFirstChild("KittyTrail") then
+        local att0 = Instance.new("Attachment", ball); att0.Name = "TrailAtt0"; att0.Position = Vector3.new(0, 1, 0)
+        local att1 = Instance.new("Attachment", ball); att1.Name = "TrailAtt1"; att1.Position = Vector3.new(0, -1, 0)
+        local trail = Instance.new("Trail", ball); trail.Name = "KittyTrail"
+        trail.Attachment0 = att0; trail.Attachment1 = att1
+        trail.Lifetime = 0.5; trail.MinLength = 0
+        trail.Transparency = NumberSequence.new(0, 1); trail.LightEmission = 0.5
+    end
+    local t = ball:FindFirstChild("KittyTrail")
+    if t and typeof(color) == "Color3" then t.Color = ColorSequence.new(color) end
+end
+
+local function removeTrail(ball)
+    if ball:FindFirstChild("KittyTrail") then ball.KittyTrail:Destroy() end
+    if ball:FindFirstChild("TrailAtt0") then ball.TrailAtt0:Destroy() end
+    if ball:FindFirstChild("TrailAtt1") then ball.TrailAtt1:Destroy() end
+end
+
+-- ORBIT PARTS
+local orbitParts = {}
+local function setupOrbit()
+    for _, v in pairs(orbitParts) do pcall(function() v:Destroy() end) end
+    orbitParts = {}
+    local orbitColors = {
+        Color3.fromRGB(255, 105, 180),
+        Color3.fromRGB(230, 80, 150),
+        Color3.fromRGB(255, 150, 200),
+        Color3.fromRGB(200, 60, 140),
+    }
+    for i = 1, 4 do
+        local part = Instance.new("Part", workspace)
+        part.Name = "KittyOrbit"
+        part.Size = Vector3.new(0.5, 0.5, 0.5)
+        part.Anchored = true
+        part.CanCollide = false
+        part.BrickColor = BrickColor.new(orbitColors[i])
+        part.Material = Enum.Material.Neon
+        part.CastShadow = false
+        table.insert(orbitParts, part)
+    end
+end
+
+local function setupImmortality(char)
+    if not immortalEnabled then return end
+    local hum = char:WaitForChild("Humanoid")
+    hum.MaxHealth = math.huge
+    hum.Health = math.huge
+    hum:GetPropertyChangedSignal("Health"):Connect(function()
+        if immortalEnabled then hum.Health = math.huge end
+    end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    setupImmortality(char)
+    hasJumped = false
+end)
+
+local function playHitSound(vol)
+    local s = Instance.new("Sound", SoundService)
+    s.SoundId = hitSounds[currentHitSound] or hitSounds["UwU"]
+    s.Volume = vol / 100
+    s:Play()
+    game:GetService("Debris"):AddItem(s, 2)
+end
+
+-- MAIN LOOP
+RunService.RenderStepped:Connect(function()
+    colorIndex = colorIndex % #rainbowColors + 1
+
+    -- SPAM
+    if SpamActive and ManualSpam then
+        local now = tick()
+        if now - lastSpamTick >= SPAM_INTERVAL then
+            lastSpamTick = now; DoParry()
+        end
+    end
+
+    -- TRAIL
+    for _, v in pairs(workspace:GetChildren()) do
+        if v:IsA("BasePart") and (v.Name:lower():find("ball") or v:GetAttribute("Ball")) then
+            if trailEnabled then
+                local color = selectedTrailColor == "Rainbow" and rainbowColors[colorIndex] or colorOptions[selectedTrailColor]
+                addTrail(v, color)
+                if selectedTrailColor == "Rainbow" then
+                    local t = v:FindFirstChild("KittyTrail")
+                    if t then t.Color = ColorSequence.new(rainbowColors[colorIndex]) end
+                end
+            else removeTrail(v) end
+        end
+    end
+
+    -- ESP
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local head = p.Character:FindFirstChild("Head")
+            if head then
+                local bb = head:FindFirstChild("KittyESP")
+                if espEnabled then
+                    if not bb then
+                        local billboard = Instance.new("BillboardGui", head)
+                        billboard.Name = "KittyESP"; billboard.Size = UDim2.new(0, 200, 0, 50)
+                        billboard.AlwaysOnTop = true; billboard.ExtentsOffset = Vector3.new(0, 3, 0)
+                        local label = Instance.new("TextLabel", billboard)
+                        label.Size = UDim2.new(1, 0, 1, 0); label.BackgroundTransparency = 1
+                        label.Text = p.DisplayName; label.TextColor3 = Color3.fromRGB(255, 105, 180)
+                        label.Font = Enum.Font.GothamBold; label.TextSize = 18
+                        label.TextStrokeTransparency = 0; label.TextStrokeColor3 = Color3.new(0, 0, 0)
+                    end
+                else if bb then bb:Destroy() end end
+            end
+        end
+    end
+
+    -- AUTO JUMP
+    if autoJumpEnabled and not hasJumped then
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.FloorMaterial ~= Enum.Material.Air then
+                hum.Jump = true
+                hasJumped = true
+                task.delay(1, function() hasJumped = false end)
+            end
+        end
+    end
+
+    -- ORBIT
+    if orbitEnabled then
+        orbitAngle = orbitAngle + 0.05
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            if #orbitParts == 0 then setupOrbit() end
+            local radius = 4
+            local positions = {
+                Vector3.new(math.cos(orbitAngle) * radius, 0, math.sin(orbitAngle) * radius),
+                Vector3.new(math.cos(orbitAngle + math.pi) * radius, 0, math.sin(orbitAngle + math.pi) * radius),
+                Vector3.new(0, math.sin(orbitAngle) * radius, math.cos(orbitAngle) * radius),
+                Vector3.new(0, math.cos(orbitAngle) * radius, math.sin(orbitAngle + math.pi/2) * radius),
+            }
+            for i, part in pairs(orbitParts) do
+                if part and part.Parent then
+                    part.CFrame = CFrame.new(hrp.Position + positions[i])
+                end
+            end
+        end
+    else
+        if #orbitParts > 0 then
+            for _, v in pairs(orbitParts) do pcall(function() v:Destroy() end) end
+            orbitParts = {}
+        end
+    end
+
+    -- IMMORTAL
+    if immortalEnabled then
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.MaxHealth = math.huge
+                if hum.Health < math.huge then hum.Health = math.huge end
+            end
+        end
+    end
+end)
+
+-- AUTO PARRY
+RunService.PreSimulation:Connect(function()
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp or not AutoParry then return end
+    local ball = nil
+    for _, v in pairs(workspace:GetChildren()) do
+        if v:IsA("BasePart") and v.AssemblyLinearVelocity.Magnitude > 10 and (v.Name:lower():find("ball") or v:GetAttribute("Ball")) then
+            ball = v; break
+        end
+    end
+    if ball then
+        local vel = ball.AssemblyLinearVelocity.Magnitude
+        VLog.Text = math.floor(vel)..".0"
+        if vel > peakVel then peakVel = vel; PLog.Text = math.floor(peakVel)..".0" end
+        local target = ball:GetAttribute("target") or ball:GetAttribute("Target")
+        if target ~= LocalPlayer.Name or tick() - lastHitTick < 0.45 then return end
+        local range = math.clamp(10 + (vel * 0.18), 11, 120)
+        if (hrp.Position - ball.Position).Magnitude < range then
+            local toPlayer = (hrp.Position - ball.Position).Unit
+            local ballDir = ball.AssemblyLinearVelocity.Unit
+            local dot = toPlayer:Dot(ballDir)
+            if dot < 0.15 then return end
+            lastHitTick = tick()
+            local waitTime
+            if vel >= 500 then
+                waitTime = 0.01
+            elseif vel >= 250 then
+                waitTime = 0.015
+            elseif vel >= 100 then
+                waitTime = 0.02
+            else
+                waitTime = 0.025
+            end
+            task.wait(waitTime)
+            if hitSoundEnabled then playHitSound(80) end
+            local cam = workspace.CurrentCamera; local oldCF = cam.CFrame; local x, y, z = 0, 0, 0
+            if CurrentMode == "Random" then x, y, z = math.random(-360,360), math.random(-360,360), math.random(-360,360)
+            elseif CurrentMode == "Up" then x = -90
+            elseif CurrentMode == "Side" then y = math.random(1,2) == 1 and 90 or -90
+            elseif CurrentMode == "Backward" then x = 180 end
+            if CurrentMode ~= "Camera" and CurrentMode ~= "None" and (x ~= 0 or y ~= 0 or z ~= 0) then
+                cam.CFrame = oldCF * CFrame.Angles(math.rad(x), math.rad(y), math.rad(z))
+                DoParry()
+                task.delay(0.12, function() cam.CFrame = oldCF end)
+            else DoParry() end
+        end
+    else VLog.Text = "0.0" end
+end)
